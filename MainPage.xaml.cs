@@ -1,10 +1,10 @@
 ﻿using System.Net.Http.Headers;
+using CommunityToolkit.Maui.Storage;
 
 namespace Image_Enhance_App;
 
 public partial class MainPage : ContentPage
 {
-    // Khai báo các biến lưu trữ toàn cục ở đây
     private FileResult? _selectedFile;
     private byte[]? _enhancedBytes;
     private readonly HttpClient _httpClient = new HttpClient();
@@ -31,13 +31,13 @@ public partial class MainPage : ContentPage
                 ImgOriginal.Source = ImageSource.FromStream(() => stream);
                 LblStatus.Text = "Đã chọn ảnh thành công!";
                 BtnSave.IsEnabled = false;
-                _enhancedBytes = null; // Dòng 32 hết lỗi
+                _enhancedBytes = null;
                 ImgEnhanced.Source = null;
             }
         }
         catch (Exception ex)
         {
-            await DisplayAlertAsync("Lỗi", $"Không thể chọn ảnh: {ex.Message}", "OK");
+            await DisplayAlert("Lỗi", $"Không thể chọn ảnh: {ex.Message}", "OK");
         }
     }
 
@@ -45,7 +45,7 @@ public partial class MainPage : ContentPage
     {
         if (_selectedFile == null)
         {
-            await DisplayAlertAsync("Thông báo", "Vui lòng chọn ảnh trước!", "OK");
+            await DisplayAlert("Thông báo", "Vui lòng chọn ảnh trước!", "OK");
             return;
         }
 
@@ -60,7 +60,6 @@ public partial class MainPage : ContentPage
             using var content = new MultipartFormDataContent();
             var streamContent = new StreamContent(stream);
 
-            // Sửa dòng 61: Dùng MediaTypeHeaderValue.Parse
             streamContent.Headers.ContentType = MediaTypeHeaderValue.Parse(_selectedFile.ContentType ?? "image/jpeg");
             content.Add(streamContent, "file", _selectedFile.FileName);
 
@@ -69,7 +68,7 @@ public partial class MainPage : ContentPage
 
             if (response.IsSuccessStatusCode)
             {
-                _enhancedBytes = await response.Content.ReadAsByteArrayAsync(); // Dòng 72 hết lỗi
+                _enhancedBytes = await response.Content.ReadAsByteArrayAsync();
                 ImgEnhanced.Source = ImageSource.FromStream(() => new MemoryStream(_enhancedBytes));
                 LblStatus.Text = "Phục hồi thành công!";
                 BtnSave.IsEnabled = true;
@@ -82,7 +81,7 @@ public partial class MainPage : ContentPage
         }
         catch (Exception ex)
         {
-            await DisplayAlertAsync("Lỗi Kết Nối", ex.Message, "OK");
+            await DisplayAlert("Lỗi Kết Nối", ex.Message, "OK");
             LblStatus.Text = "Xử lý thất bại!";
         }
         finally
@@ -95,19 +94,32 @@ public partial class MainPage : ContentPage
 
     private async void OnSaveImageClicked(object sender, EventArgs e)
     {
-        if (_enhancedBytes == null || _enhancedBytes.Length == 0) return;
+        if (_enhancedBytes == null || _enhancedBytes.Length == 0)
+        {
+            await DisplayAlert("Thông báo", "Chưa có ảnh kết quả để lưu!", "OK");
+            return;
+        }
 
         try
         {
+            using var stream = new MemoryStream(_enhancedBytes);
             string fileName = $"Enhanced_{DateTime.Now:yyyyMMdd_HHmmss}.jpg";
-            string targetPath = Path.Combine(FileSystem.Current.AppDataDirectory, fileName);
 
-            await File.WriteAllBytesAsync(targetPath, _enhancedBytes);
-            await DisplayAlertAsync("Thành công", $"Đã lưu ảnh vào thiết bị:\n{targetPath}", "OK");
+            // Mở hộp thoại hệ thống cho phép chọn vị trí lưu file
+            var fileSaverResult = await FileSaver.Default.SaveAsync(fileName, stream, CancellationToken.None);
+
+            if (fileSaverResult.IsSuccessful)
+            {
+                await DisplayAlert("Thành công", $"Đã lưu ảnh tại:\n{fileSaverResult.FilePath}", "OK");
+            }
+            else if (fileSaverResult.Exception != null)
+            {
+                await DisplayAlert("Lỗi Lưu File", fileSaverResult.Exception.Message, "OK");
+            }
         }
         catch (Exception ex)
         {
-            await DisplayAlertAsync("Lỗi Lưu File", ex.Message, "OK");
+            await DisplayAlert("Lỗi Lưu File", ex.Message, "OK");
         }
     }
 }

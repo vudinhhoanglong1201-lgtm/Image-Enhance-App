@@ -1,12 +1,11 @@
 ﻿using System.Net.Http.Headers;
-using CommunityToolkit.Maui.Storage;
 
 namespace Image_Enhance_App;
 
 public partial class MainPage : ContentPage
 {
-    private FileResult? _selectedFile;
-    private byte[]? _enhancedBytes;
+    private List<FileResult> _selectedFiles = new();
+    private List<byte[]> _enhancedImagesBytes = new();
     private readonly HttpClient _httpClient = new HttpClient();
 
     public MainPage()
@@ -14,24 +13,27 @@ public partial class MainPage : ContentPage
         InitializeComponent();
     }
 
+    // 1. CHỌN NHIỀU ẢNH CÙNG LÚC
     private async void OnSelectImageClicked(object sender, EventArgs e)
     {
         try
         {
-            var result = await FilePicker.Default.PickAsync(new PickOptions
+            var results = await FilePicker.Default.PickMultipleAsync(new PickOptions
             {
-                PickerTitle = "Chọn ảnh cần làm nét",
+                PickerTitle = "Chọn các ảnh cần làm nét",
                 FileTypes = FilePickerFileType.Images
             });
 
-            if (result != null)
+            if (results != null && results.Any())
             {
-                _selectedFile = result;
-                var stream = await result.OpenReadAsync();
-                ImgOriginal.Source = ImageSource.FromStream(() => stream);
-                LblStatus.Text = "Đã chọn ảnh thành công!";
+                _selectedFiles = results.ToList();
+                _enhancedImagesBytes.Clear();
+
+                var firstStream = await _selectedFiles[0].OpenReadAsync();
+                ImgOriginal.Source = ImageSource.FromStream(() => firstStream);
+
+                LblStatus.Text = $"Đã chọn {_selectedFiles.Count} ảnh!";
                 BtnSave.IsEnabled = false;
-                _enhancedBytes = null;
                 ImgEnhanced.Source = null;
             }
         }
@@ -41,42 +43,58 @@ public partial class MainPage : ContentPage
         }
     }
 
+    // 2. XỬ LÝ AI LẦN LƯỢT TỪNG ẢNH
     private async void OnEnhanceImageClicked(object sender, EventArgs e)
     {
-        if (_selectedFile == null)
+        if (!_selectedFiles.Any())
         {
-            await DisplayAlert("Thông báo", "Vui lòng chọn ảnh trước!", "OK");
+            await DisplayAlert("Thông báo", "Vui lòng chọn ít nhất 1 ảnh trước!", "OK");
             return;
         }
 
         BtnEnhance.IsEnabled = false;
         LoadingSpinner.IsVisible = true;
         LoadingSpinner.IsRunning = true;
-        LblStatus.Text = "Đang gửi ảnh lên Server xử lý AI...";
+        _enhancedImagesBytes.Clear();
+
+        string apiUrl = "http://10.0.2.2:5123/enhance";
+        int totalFiles = _selectedFiles.Count;
+        int successCount = 0;
 
         try
         {
-            using var stream = await _selectedFile.OpenReadAsync();
-            using var content = new MultipartFormDataContent();
-            var streamContent = new StreamContent(stream);
-
-            streamContent.Headers.ContentType = MediaTypeHeaderValue.Parse(_selectedFile.ContentType ?? "image/jpeg");
-            content.Add(streamContent, "file", _selectedFile.FileName);
-
-            string apiUrl = "http://10.0.2.2:5123/enhance";
-            var response = await _httpClient.PostAsync(apiUrl, content);
-
-            if (response.IsSuccessStatusCode)
+            for (int i = 0; i < totalFiles; i++)
             {
-                _enhancedBytes = await response.Content.ReadAsByteArrayAsync();
-                ImgEnhanced.Source = ImageSource.FromStream(() => new MemoryStream(_enhancedBytes));
-                LblStatus.Text = "Phục hồi thành công!";
+                var file = _selectedFiles[i];
+                LblStatus.Text = $"Đang xử lý {i + 1}/{totalFiles}: {file.FileName}...";
+
+                using var stream = await file.OpenReadAsync();
+                using var content = new MultipartFormDataContent();
+                var streamContent = new StreamContent(stream);
+
+                streamContent.Headers.ContentType = MediaTypeHeaderValue.Parse(file.ContentType ?? "image/jpeg");
+                content.Add(streamContent, "file", file.FileName);
+
+                var response = await _httpClient.PostAsync(apiUrl, content);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    byte[] resultBytes = await response.Content.ReadAsByteArrayAsync();
+                    _enhancedImagesBytes.Add(resultBytes);
+                    successCount++;
+
+                    ImgEnhanced.Source = ImageSource.FromStream(() => new MemoryStream(resultBytes));
+                }
+            }
+
+            if (successCount > 0)
+            {
+                LblStatus.Text = $"Phục hồi thành công {successCount}/{totalFiles} ảnh!";
                 BtnSave.IsEnabled = true;
             }
             else
             {
-                string errorDetail = await response.Content.ReadAsStringAsync();
-                LblStatus.Text = $"Lỗi Server ({(int)response.StatusCode}): {errorDetail}";
+                LblStatus.Text = "Xử lý thất bại!";
             }
         }
         catch (Exception ex)
@@ -92,9 +110,10 @@ public partial class MainPage : ContentPage
         }
     }
 
+    // 3. LƯU TỰ ĐỘNG VÀO BỘ SƯU TẬP ANDROID
     private async void OnSaveImageClicked(object sender, EventArgs e)
     {
-        if (_enhancedBytes == null || _enhancedBytes.Length == 0)
+        if (!_enhancedImagesBytes.Any())
         {
             await DisplayAlert("Thông báo", "Chưa có ảnh kết quả để lưu!", "OK");
             return;
@@ -102,20 +121,42 @@ public partial class MainPage : ContentPage
 
         try
         {
-            using var stream = new MemoryStream(_enhancedBytes);
-            string fileName = $"Enhanced_{DateTime.Now:yyyyMMdd_HHmmss}.jpg";
+#if ANDROID
+            // Lấy đường dẫn thư mục Pictures chuẩn trên Android
+            string picturesPath = Android.OS.Environment.GetExternalStoragePublicDirectory(
+                Android.OS.Environment.DirectoryPictures)?.AbsolutePath
+                ?? FileSystem.Current.AppDataDirectory;
 
-            // Mở hộp thoại hệ thống cho phép chọn vị trí lưu file
-            var fileSaverResult = await FileSaver.Default.SaveAsync(fileName, stream, CancellationToken.None);
+            string appDir = Path.Combine(picturesPath, "ImageEnhanceApp");
+            if (!Directory.Exists(appDir))
+            {
+                Directory.CreateDirectory(appDir);
+            }
 
-            if (fileSaverResult.IsSuccessful)
+            List<string> savedFilePaths = new();
+
+            for (int i = 0; i < _enhancedImagesBytes.Count; i++)
             {
-                await DisplayAlert("Thành công", $"Đã lưu ảnh tại:\n{fileSaverResult.FilePath}", "OK");
+                string fileName = $"Enhanced_{DateTime.Now:yyyyMMdd_HHmmss}_{i + 1}.jpg";
+                string filePath = Path.Combine(appDir, fileName);
+
+                await File.WriteAllBytesAsync(filePath, _enhancedImagesBytes[i]);
+                savedFilePaths.Add(filePath);
             }
-            else if (fileSaverResult.Exception != null)
-            {
-                await DisplayAlert("Lỗi Lưu File", fileSaverResult.Exception.Message, "OK");
-            }
+
+            // Gọi MediaScanner để ảnh xuất hiện lập tức trong Bộ sưu tập (Gallery)
+            var context = Platform.CurrentActivity ?? Android.App.Application.Context;
+            Android.Media.MediaScannerConnection.ScanFile(
+                context,
+                savedFilePaths.ToArray(),
+                new[] { "image/jpeg" },
+                null
+            );
+
+            await DisplayAlert("Thành công", $"Đã lưu {_enhancedImagesBytes.Count} ảnh vào Album 'ImageEnhanceApp'!", "OK");
+#else
+            await DisplayAlert("Thông báo", "Tính năng này chỉ hỗ trợ trên thiết bị Android.", "OK");
+#endif
         }
         catch (Exception ex)
         {

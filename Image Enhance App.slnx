@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="../Image Enhance App Backend API/Image Enhance App Backend API.csproj" Id="33e0fe4b-07dd-4cd7-9fa1-d6ffe2356e38" />
+  <Project Path="Image Enhance App.csproj">
+    <Deploy Solution="Debug|*" />
+  </Project>
+</Solution>

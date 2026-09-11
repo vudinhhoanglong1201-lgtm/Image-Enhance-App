@@ -1,4 +1,5 @@
-﻿using System.Net.Http.Headers;
+﻿using System.Collections.ObjectModel;
+using System.Net.Http.Headers;
 
 namespace Image_Enhance_App;
 
@@ -8,12 +9,16 @@ public partial class MainPage : ContentPage
     private List<byte[]> _enhancedImagesBytes = new();
     private readonly HttpClient _httpClient = new HttpClient();
 
+    // ObservableCollection giúp UI tự động cập nhật danh sách ảnh ngay lập tức
+    private ObservableCollection<ImageSource> _displayImages = new();
+
     public MainPage()
     {
         InitializeComponent();
+        ImagesList.ItemsSource = _displayImages;
     }
 
-    // 1. CHỌN NHIỀU ẢNH CÙNG LÚC
+    // 1. CHỌN NHIỀU ẢNH
     private async void OnSelectImageClicked(object sender, EventArgs e)
     {
         try
@@ -28,13 +33,17 @@ public partial class MainPage : ContentPage
             {
                 _selectedFiles = results.ToList();
                 _enhancedImagesBytes.Clear();
+                _displayImages.Clear();
 
-                var firstStream = await _selectedFiles[0].OpenReadAsync();
-                ImgOriginal.Source = ImageSource.FromStream(() => firstStream);
+                // Hiển thị tất cả ảnh gốc vừa chọn lên danh sách
+                foreach (var file in _selectedFiles)
+                {
+                    var stream = await file.OpenReadAsync();
+                    _displayImages.Add(ImageSource.FromStream(() => stream));
+                }
 
                 LblStatus.Text = $"Đã chọn {_selectedFiles.Count} ảnh!";
                 BtnSave.IsEnabled = false;
-                ImgEnhanced.Source = null;
             }
         }
         catch (Exception ex)
@@ -43,7 +52,7 @@ public partial class MainPage : ContentPage
         }
     }
 
-    // 2. XỬ LÝ AI LẦN LƯỢT TỪNG ẢNH
+    // 2. XỬ LÝ AI VÀ CẬP NHẬT TẤT CẢ ẢNH KẾT QUẢ LÊN MÀN HÌNH
     private async void OnEnhanceImageClicked(object sender, EventArgs e)
     {
         if (!_selectedFiles.Any())
@@ -63,6 +72,8 @@ public partial class MainPage : ContentPage
 
         try
         {
+            List<ImageSource> enhancedSources = new();
+
             for (int i = 0; i < totalFiles; i++)
             {
                 var file = _selectedFiles[i];
@@ -83,12 +94,19 @@ public partial class MainPage : ContentPage
                     _enhancedImagesBytes.Add(resultBytes);
                     successCount++;
 
-                    ImgEnhanced.Source = ImageSource.FromStream(() => new MemoryStream(resultBytes));
+                    enhancedSources.Add(ImageSource.FromStream(() => new MemoryStream(resultBytes)));
                 }
             }
 
             if (successCount > 0)
             {
+                // Thay thế danh sách hiển thị bằng toàn bộ ảnh đã qua xử lý AI
+                _displayImages.Clear();
+                foreach (var imgSource in enhancedSources)
+                {
+                    _displayImages.Add(imgSource);
+                }
+
                 LblStatus.Text = $"Phục hồi thành công {successCount}/{totalFiles} ảnh!";
                 BtnSave.IsEnabled = true;
             }
@@ -110,7 +128,7 @@ public partial class MainPage : ContentPage
         }
     }
 
-    // 3. LƯU TỰ ĐỘNG VÀO BỘ SƯU TẬP ANDROID
+    // 3. LƯU TẤT CẢ ẢNH VÀO GALLERY ANDROID
     private async void OnSaveImageClicked(object sender, EventArgs e)
     {
         if (!_enhancedImagesBytes.Any())
@@ -122,7 +140,6 @@ public partial class MainPage : ContentPage
         try
         {
 #if ANDROID
-            // Lấy đường dẫn thư mục Pictures chuẩn trên Android
             string picturesPath = Android.OS.Environment.GetExternalStoragePublicDirectory(
                 Android.OS.Environment.DirectoryPictures)?.AbsolutePath
                 ?? FileSystem.Current.AppDataDirectory;
@@ -144,7 +161,6 @@ public partial class MainPage : ContentPage
                 savedFilePaths.Add(filePath);
             }
 
-            // Gọi MediaScanner để ảnh xuất hiện lập tức trong Bộ sưu tập (Gallery)
             var context = Platform.CurrentActivity ?? Android.App.Application.Context;
             Android.Media.MediaScannerConnection.ScanFile(
                 context,

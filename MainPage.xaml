@@ -5,45 +5,57 @@
 
     <ScrollView>
         <VerticalStackLayout Padding="20" Spacing="15">
-            <Label Text="Phục Hồi Nét Ảnh AI"
-                   FontSize="22"
-                   FontAttributes="Bold"
+
+            <Label Text="Phục Hồi Nét Ảnh AI" 
+                   FontSize="22" 
+                   FontAttributes="Bold" 
                    HorizontalOptions="Center" />
 
-            <Button x:Name="BtnSelect"
-                    Text="Chọn Ảnh Từ Máy"
-                    Clicked="OnSelectImageClicked"
-                    BackgroundColor="#512BD4"
+            <!-- Nút chọn ảnh -->
+            <Button Text="Chọn Ảnh Từ Máy" 
+                    Clicked="OnSelectImageClicked" 
+                    BackgroundColor="#512BD4" 
                     TextColor="White" />
 
-            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                <VerticalStackLayout Grid.Column="0" Spacing="5">
-                    <Label Text="Ảnh Gốc" HorizontalOptions="Center" />
-                    <Image x:Name="ImgOriginal" HeightRequest="220" Aspect="AspectFit" />
-                </VerticalStackLayout>
+            <!-- Danh sách ảnh đã chọn / kết quả -->
+            <CollectionView x:Name="ImagesList" HeightRequest="350">
+                <CollectionView.ItemsLayout>
+                    <GridItemsLayout Orientation="Vertical" Span="2" HorizontalItemSpacing="10" VerticalItemSpacing="10" />
+                </CollectionView.ItemsLayout>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Frame Padding="0" CornerRadius="8" IsClippedToBounds="True" HeightRequest="160">
+                            <Image Source="{Binding .}" Aspect="AspectFill" />
+                        </Frame>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
 
-                <VerticalStackLayout Grid.Column="1" Spacing="5">
-                    <Label Text="Kết Quả AI" HorizontalOptions="Center" />
-                    <Image x:Name="ImgEnhanced" HeightRequest="220" Aspect="AspectFit" />
-                </VerticalStackLayout>
-            </Grid>
+            <Label x:Name="LblStatus" 
+                   Text="Chưa chọn ảnh nào" 
+                   HorizontalOptions="Center" 
+                   TextColor="Gray" />
 
-            <ActivityIndicator x:Name="LoadingSpinner" IsRunning="False" IsVisible="False" Color="#512BD4" HorizontalOptions="Center" />
-            <Label x:Name="LblStatus" HorizontalOptions="Center" TextColor="Gray" />
+            <ActivityIndicator x:Name="LoadingSpinner" 
+                               IsRunning="False" 
+                               IsVisible="False" 
+                               Color="#512BD4" />
 
-            <Button x:Name="BtnEnhance"
-                    Text="Phục Hồi Nét Ảnh"
-                    Clicked="OnEnhanceImageClicked"
-                    BackgroundColor="#2B0B98"
+            <!-- Nút xử lý AI -->
+            <Button x:Name="BtnEnhance" 
+                    Text="Phục Hồi Nét Ảnh" 
+                    Clicked="OnEnhanceImageClicked" 
+                    BackgroundColor="#512BD4" 
                     TextColor="White" />
 
-            <Button x:Name="BtnSave"
-                    Text="Lưu Ảnh Về Máy"
-                    Clicked="OnSaveImageClicked"
-                    IsEnabled="False"
-                    BackgroundColor="#107C41"
+            <!-- Nút lưu ảnh -->
+            <Button x:Name="BtnSave" 
+                    Text="Lưu Ảnh Về Máy" 
+                    Clicked="OnSaveImageClicked" 
+                    IsEnabled="False" 
+                    BackgroundColor="#512BD4" 
                     TextColor="White" />
+
         </VerticalStackLayout>
     </ScrollView>
-
 </ContentPage>
